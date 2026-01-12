@@ -82,14 +82,13 @@ impl ReassemblyQueue {
     }
 
     pub fn add(&mut self, tsn: Tsn, data: Data) {
-        if let Some(deferred_stream) = &mut self.deferred_reset_streams {
-            if tsn > deferred_stream.sender_last_assigned_tsn
-                && deferred_stream.streams.contains(&data.stream_key.id())
-            {
-                self.queued_bytes += data.payload.len();
-                deferred_stream.deferred_operations.push(DeferredOperation::Data(tsn, data));
-                return;
-            }
+        if let Some(deferred_stream) = &mut self.deferred_reset_streams
+            && tsn > deferred_stream.sender_last_assigned_tsn
+            && deferred_stream.streams.contains(&data.stream_key.id())
+        {
+            self.queued_bytes += data.payload.len();
+            deferred_stream.deferred_operations.push(DeferredOperation::Data(tsn, data));
+            return;
         }
 
         let bytes_added_to_queue = self.streams.add(tsn, data, &mut |message| {
@@ -118,13 +117,13 @@ impl ReassemblyQueue {
         new_cumulative_ack: Tsn,
         skipped_streams: Vec<SkippedStream>,
     ) {
-        if let Some(deferred_stream) = &mut self.deferred_reset_streams {
-            if new_cumulative_ack > deferred_stream.sender_last_assigned_tsn {
-                deferred_stream
-                    .deferred_operations
-                    .push(DeferredOperation::ForwardTsn(new_cumulative_ack, skipped_streams));
-                return;
-            }
+        if let Some(deferred_stream) = &mut self.deferred_reset_streams
+            && new_cumulative_ack > deferred_stream.sender_last_assigned_tsn
+        {
+            deferred_stream
+                .deferred_operations
+                .push(DeferredOperation::ForwardTsn(new_cumulative_ack, skipped_streams));
+            return;
         }
 
         let bytes_removed_from_queue =

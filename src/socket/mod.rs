@@ -1190,25 +1190,23 @@ impl Socket<'_> {
     }
 
     fn handle_heartbeat_timeouts(&mut self, now: SocketTime) {
-        if self.heartbeat_interval.expire(now) {
-            if let Some(tcb) = self.state.tcb() {
-                self.heartbeat_timeout.set_duration(self.options.rto_initial);
-                self.heartbeat_timeout.start(now);
-                self.heartbeat_counter = self.heartbeat_counter.wrapping_add(1);
-                self.heartbeat_sent_time = now;
-                let mut info = vec![0; 4];
-                write_u32_be!(&mut info, self.heartbeat_counter);
-                self.events.borrow_mut().add(SocketEvent::SendPacket(
-                    tcb.new_packet()
-                        .add(Chunk::HeartbeatRequest(HeartbeatRequestChunk {
-                            parameters: vec![Parameter::HeartbeatInfo(HeartbeatInfoParameter {
-                                info,
-                            })],
-                        }))
-                        .build(),
-                ));
-                self.tx_packets_count += 1;
-            }
+        if self.heartbeat_interval.expire(now)
+            && let Some(tcb) = self.state.tcb()
+        {
+            self.heartbeat_timeout.set_duration(self.options.rto_initial);
+            self.heartbeat_timeout.start(now);
+            self.heartbeat_counter = self.heartbeat_counter.wrapping_add(1);
+            self.heartbeat_sent_time = now;
+            let mut info = vec![0; 4];
+            write_u32_be!(&mut info, self.heartbeat_counter);
+            self.events.borrow_mut().add(SocketEvent::SendPacket(
+                tcb.new_packet()
+                    .add(Chunk::HeartbeatRequest(HeartbeatRequestChunk {
+                        parameters: vec![Parameter::HeartbeatInfo(HeartbeatInfoParameter { info })],
+                    }))
+                    .build(),
+            ));
+            self.tx_packets_count += 1;
         }
         if self.heartbeat_timeout.expire(now) {
             // Note that the timeout timer is not restarted. It will be started again when the
@@ -1315,10 +1313,10 @@ impl Socket<'_> {
         new_cumulative_tsn: Tsn,
         skipped_streams: Vec<SkippedStream>,
     ) {
-        if let Some(tcb) = self.state.tcb_mut() {
-            if tcb.data_tracker.handle_forward_tsn(now, new_cumulative_tsn) {
-                tcb.reassembly_queue.handle_forward_tsn(new_cumulative_tsn, skipped_streams);
-            }
+        if let Some(tcb) = self.state.tcb_mut()
+            && tcb.data_tracker.handle_forward_tsn(now, new_cumulative_tsn)
+        {
+            tcb.reassembly_queue.handle_forward_tsn(new_cumulative_tsn, skipped_streams);
         }
     }
 
@@ -1450,39 +1448,36 @@ impl Socket<'_> {
                         request_sequence_number,
                         request,
                     }) = &tcb.current_reset_request
+                        && response_seq_nbr == *request_sequence_number
                     {
-                        if response_seq_nbr == *request_sequence_number {
-                            tcb.reconfig_timer.stop();
+                        tcb.reconfig_timer.stop();
 
-                            tcb.current_reset_request = match result {
-                                ReconfigurationResponseResult::SuccessNothingToDo
-                                | ReconfigurationResponseResult::SuccessPerformed => {
-                                    self.events.borrow_mut().add(
-                                        SocketEvent::OnStreamsResetPerformed(
-                                            request.streams.clone(),
-                                        ),
-                                    );
-                                    self.send_queue.commit_reset_streams();
+                        tcb.current_reset_request = match result {
+                            ReconfigurationResponseResult::SuccessNothingToDo
+                            | ReconfigurationResponseResult::SuccessPerformed => {
+                                self.events.borrow_mut().add(SocketEvent::OnStreamsResetPerformed(
+                                    request.streams.clone(),
+                                ));
+                                self.send_queue.commit_reset_streams();
 
-                                    CurrentResetRequest::None
-                                }
-                                ReconfigurationResponseResult::InProgress => {
-                                    tcb.reconfig_timer.set_duration(tcb.rto.rto());
-                                    tcb.reconfig_timer.start(now);
+                                CurrentResetRequest::None
+                            }
+                            ReconfigurationResponseResult::InProgress => {
+                                tcb.reconfig_timer.set_duration(tcb.rto.rto());
+                                tcb.reconfig_timer.start(now);
 
-                                    CurrentResetRequest::Prepared(request.clone())
-                                }
-                                ReconfigurationResponseResult::Denied
-                                | ReconfigurationResponseResult::ErrorWrongSSN
-                                | ReconfigurationResponseResult::ErrorRequestAlreadyInProgress
-                                | ReconfigurationResponseResult::ErrorBadSequenceNumber => {
-                                    self.events.borrow_mut().add(
-                                        SocketEvent::OnStreamsResetFailed(request.streams.clone()),
-                                    );
-                                    self.send_queue.rollback_reset_streams();
+                                CurrentResetRequest::Prepared(request.clone())
+                            }
+                            ReconfigurationResponseResult::Denied
+                            | ReconfigurationResponseResult::ErrorWrongSSN
+                            | ReconfigurationResponseResult::ErrorRequestAlreadyInProgress
+                            | ReconfigurationResponseResult::ErrorBadSequenceNumber => {
+                                self.events.borrow_mut().add(SocketEvent::OnStreamsResetFailed(
+                                    request.streams.clone(),
+                                ));
+                                self.send_queue.rollback_reset_streams();
 
-                                    CurrentResetRequest::None
-                                }
+                                CurrentResetRequest::None
                             }
                         }
                     }
@@ -1639,17 +1634,17 @@ impl Socket<'_> {
     }
 
     fn maybe_send_shutdown_on_packet_received(&mut self, now: SocketTime, chunks: &[Chunk]) {
-        if let State::ShutdownSent(s) = &mut self.state {
-            if chunks.iter().any(|c| matches!(c, Chunk::Data(_))) {
-                // From <https://datatracker.ietf.org/doc/html/rfc9260#section-9.2-10>:
-                //
-                //   While in the SHUTDOWN-SENT state, the SHUTDOWN chunk sender MUST immediately
-                //   respond to each received packet containing one or more DATA chunks with a
-                //   SHUTDOWN chunk and restart the T2-shutdown timer.
-                s.t2_shutdown.set_duration(s.tcb.rto.rto());
-                s.t2_shutdown.start(now);
-                self.send_shutdown();
-            }
+        if let State::ShutdownSent(s) = &mut self.state
+            && chunks.iter().any(|c| matches!(c, Chunk::Data(_)))
+        {
+            // From <https://datatracker.ietf.org/doc/html/rfc9260#section-9.2-10>:
+            //
+            //   While in the SHUTDOWN-SENT state, the SHUTDOWN chunk sender MUST immediately
+            //   respond to each received packet containing one or more DATA chunks with a SHUTDOWN
+            //   chunk and restart the T2-shutdown timer.
+            s.t2_shutdown.set_duration(s.tcb.rto.rto());
+            s.t2_shutdown.start(now);
+            self.send_shutdown();
         }
     }
 }

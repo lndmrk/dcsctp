@@ -1,5 +1,3 @@
-style_edition = "2024"
-
 comment_width = 100
 group_imports = "One"
 imports_granularity = "Item"

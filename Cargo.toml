@@ -3,7 +3,7 @@ members = [".", "fuzz"]
 
 [workspace.package]
 version = "0.1.4"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/webrtc/dcsctp"
 
@@ -23,9 +23,6 @@ thiserror = "2.0.17"
 dead-code = "allow"
 unused-macros = "allow"
 rust-2018-idioms = "deny"
-rust-2024-compatibility = "deny"
-# These should be manually migrated once we bump the edition.
-edition-2024-expr-fragment-specifier = "allow"
 unsafe-code = "deny"
 warnings = "deny"
 

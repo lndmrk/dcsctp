@@ -183,10 +183,10 @@ impl RetransmissionQueue {
     }
 
     fn maybe_exit_fast_recovery(&mut self, cumulative_tsn_ack: Tsn) {
-        if let Some(fast_recovery_exit_tsn) = self.fast_recovery_exit_tsn {
-            if cumulative_tsn_ack >= fast_recovery_exit_tsn {
-                self.fast_recovery_exit_tsn = None;
-            }
+        if let Some(fast_recovery_exit_tsn) = self.fast_recovery_exit_tsn
+            && cumulative_tsn_ack >= fast_recovery_exit_tsn
+        {
+            self.fast_recovery_exit_tsn = None;
         }
     }
 
